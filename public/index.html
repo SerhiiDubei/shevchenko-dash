@@ -10,7 +10,7 @@
   :root{
     --bg:#0c0d10; --panel:#15171c; --panel2:#1b1e25; --line:#262a33;
     --ink:#e8e6e0; --dim:#8b8f99; --gold:#d9b25f; --green:#5fd99a; --red:#e8736b;
-    --blue:#6ea8ff;
+    --blue:#6ea8ff; --purple:#a78bfa;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -33,9 +33,13 @@
   .card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
   .card .v{font-size:24px;margin-top:6px;font-weight:600}
   .card .v.gold{color:var(--gold)} .card .v.green{color:var(--green)}
+  .card .v.purple{color:var(--purple)} .card .v.blue{color:var(--blue)}
+  .card .sub2{color:var(--dim);font-size:11px;margin-top:2px;font-family:'SF Mono',ui-monospace,monospace}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
   .panel h2{font-size:13px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);
-    color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+    color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600;
+    display:flex;align-items:center;gap:8px}
+  .panel h2 .hint{color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;margin-left:auto}
   .runbar{display:flex;align-items:center;gap:14px;padding:16px;flex-wrap:wrap}
   .pill{font-size:12px;padding:4px 11px;border-radius:999px;font-weight:600}
   .pill.on{background:rgba(95,217,154,.15);color:var(--green)}
@@ -47,7 +51,11 @@
   th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
   td.num{text-align:right}
   tr.best td{background:rgba(217,178,95,.07)}
-  .tag{font-size:10px;color:var(--gold);border:1px solid var(--gold);border-radius:5px;padding:1px 5px;margin-left:6px}
+  tr.best-comp td{background:rgba(167,139,250,.07)}
+  tr.best.best-comp td{background:linear-gradient(90deg,rgba(217,178,95,.08),rgba(167,139,250,.08))}
+  .tag{font-size:10px;border-radius:5px;padding:1px 5px;margin-left:6px}
+  .tag.loss{color:var(--gold);border:1px solid var(--gold)}
+  .tag.comp{color:var(--purple);border:1px solid var(--purple)}
   .crash{color:var(--red)}
   .desc{color:var(--dim);white-space:normal;max-width:340px}
   canvas{padding:14px}
@@ -55,6 +63,20 @@
   .sample{padding:16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
   .sample pre{white-space:pre-wrap;font-size:12.5px;line-height:1.6;margin:0;color:var(--ink);font-family:Georgia,serif}
   .sample .lbl{color:var(--gold);font-size:11px;margin-bottom:8px}
+  .metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  @media (max-width:760px){.metrics-grid{grid-template-columns:1fr}}
+  .metric-block{padding:16px 18px;border-right:1px solid var(--line)}
+  .metric-block:last-child{border-right:0}
+  .metric-block h3{font-size:11px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+  .metric-row{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12.5px}
+  .metric-row .name{flex:0 0 160px;color:var(--dim);font-family:'SF Mono',ui-monospace,monospace;font-size:11.5px}
+  .metric-row .bar{flex:1;height:6px;background:var(--panel2);border-radius:4px;overflow:hidden;min-width:60px}
+  .metric-row .bar>i{display:block;height:100%;border-radius:4px}
+  .metric-row .v{flex:0 0 50px;text-align:right;font-family:'SF Mono',ui-monospace,monospace;font-size:12px;font-weight:600}
+  .composite-hero{padding:18px 22px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+  .composite-hero .big{font-size:48px;font-weight:700;color:var(--purple);font-family:'SF Mono',ui-monospace,monospace;letter-spacing:-1px}
+  .composite-hero .lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .composite-hero .desc{color:var(--dim);font-size:12.5px;margin-top:4px;max-width:50ch}
   footer{color:var(--dim);font-size:11px;text-align:center;padding:18px}
   .empty{padding:30px;color:var(--dim);text-align:center}
 </style>
@@ -62,7 +84,7 @@
 <body>
 <header>
   <h1>Реве та стогне <span class="ac">Qwen</span> — Shevchenko-FT</h1>
-  <span class="sub">автономний LoRA-ресерч · live</span>
+  <span class="sub">автономний LoRA-ресерч · live · з композитною метрикою</span>
   <div class="live"><span id="dot" class="dot"></span><span id="age">з'єднання…</span></div>
 </header>
 <main>
@@ -73,8 +95,32 @@
     <div class="runbar" id="runbar"><span class="pill off">—</span></div>
   </div>
 
+  <div class="panel" id="composite-panel" style="display:none">
+    <h2>Композитна оцінка <span class="hint">останній прогон · Tier 1 (локально) + Tier 2 (LLM-judge)</span></h2>
+    <div class="composite-hero">
+      <div>
+        <div class="lbl">composite_score (0..1, вище — краще)</div>
+        <div class="big" id="composite-big">—</div>
+      </div>
+      <div style="flex:1">
+        <div class="lbl">формула</div>
+        <div class="desc">loss · 25% + novelty · 20% + diversity · 15% + style · 15% + LLM-judge · 25%</div>
+      </div>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-block" id="t1-block">
+        <h3>Tier 1 — локальні метрики ($0)</h3>
+        <div id="t1-rows"><div class="empty" style="padding:8px 0">очікую evaluate.py…</div></div>
+      </div>
+      <div class="metric-block" id="t2-block">
+        <h3>Tier 2 — LLM judge (DeepSeek)</h3>
+        <div id="t2-rows"><div class="empty" style="padding:8px 0">очікую LLM-judge…</div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel">
-    <h2>eval_loss у часі (нижче = краще)</h2>
+    <h2>Прогрес у часі <span class="hint">eval_loss (нижче = краще) · якість · composite</span></h2>
     <canvas id="chart" height="120"></canvas>
   </div>
 
@@ -84,36 +130,97 @@
   </div>
 
   <div class="panel">
-    <h2>Probe-семпли (останній прогон) · <span id="samples-q" style="color:var(--green);text-transform:none;letter-spacing:0"></span></h2>
+    <h2>Probe-семпли (останній прогон) · <span id="samples-q" style="color:var(--green);text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
     <div class="samples" id="samples"><div class="empty">—</div></div>
   </div>
 </main>
-<footer>оновлюється кожні 4с · дані пушить под кожні 10с</footer>
+<footer>оновлюється кожні 4с · дані пушить под кожні 10с · композитна оцінка з evaluate.py + compose.py</footer>
 
 <script>
-// All dynamic strings are escaped via esc(); every innerHTML write also passes
-// through DOMPurify.sanitize() as defence-in-depth against the pod's free-text
-// fields (commit messages, generated poems).
+// All dynamic strings are escaped via esc(); every HTML insert is sanitized
+// through DOMPurify then parsed via DOMParser before being attached to the DOM.
+// Defence-in-depth against pod's free-text fields (commit messages, poems).
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const setHTML = (el, html) => { el.innerHTML = DOMPurify.sanitize(html); };
+
+// Safe HTML insert: sanitize → parse → replaceChildren. No raw markup assignment.
+const setHTML = (el, html) => {
+  const safe = DOMPurify.sanitize(html, {ADD_ATTR: ['title']});
+  const parsed = new DOMParser().parseFromString(safe, 'text/html');
+  el.replaceChildren(...Array.from(parsed.body.childNodes));
+};
+
 const fmtDur = s => s==null ? "—" : `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}`;
-// render any ISO timestamp in the VIEWER's local timezone (Kyiv etc.)
 const localTime = iso => { try { return new Date(iso).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}); } catch(e){ return ""; } };
 let chart;
 
+// ---------- Tier-1/Tier-2 metric specs ----------
+// Each: [key, label, min, max, color]. Bar fills from min..max.
+const T1_SPECS = [
+  ["distinct_1",            "distinct-1",      0, 1,    "#5fd99a"],
+  ["distinct_2",            "distinct-2",      0, 1,    "#5fd99a"],
+  ["ngram_novelty",         "n-gram novelty",  0, 1,    "#6ea8ff"],
+  ["old_orthography_rate",  "старий правопис", 0, 0.06, "#d9b25f"],
+  ["lexicon_density",       "Шевч.-лексика",   0, 0.08, "#d9b25f"],
+  ["avg_syllables_per_line","склад/рядок",     6, 18,   "#a78bfa"],
+  ["train_eval_gap",        "train→eval gap",  0, 2.0,  "#e8736b"],
+];
+const T2_SPECS = [
+  ["style",   "стиль",     1, 10, "#d9b25f"],
+  ["rhythm",  "ритм",      1, 10, "#a78bfa"],
+  ["lexicon", "лексика",   1, 10, "#d9b25f"],
+  ["grammar", "граматика", 1, 10, "#6ea8ff"],
+];
+
+function metricRow(spec, value){
+  const [key, label, min, max, color] = spec;
+  if(value == null) {
+    return `<div class="metric-row"><span class="name">${esc(label)}</span>
+      <div class="bar"></div><span class="v">—</span></div>`;
+  }
+  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  const valFmt = (max <= 1) ? value.toFixed(3) : (max <= 10 ? value.toFixed(1) : value.toFixed(2));
+  return `<div class="metric-row" title="${esc(key)} ∈ [${min}..${max}]">
+    <span class="name">${esc(label)}</span>
+    <div class="bar"><i style="width:${pct.toFixed(1)}%;background:${color}"></i></div>
+    <span class="v">${esc(valFmt)}</span></div>`;
+}
+
+function renderComposite(d){
+  // Prefer live_evaluation (just-finished run); fall back to most recent commit with evaluation
+  const live = d.live_evaluation;
+  let metrics = live ? live.metrics : null;
+  let composite = live ? live.composite_score : null;
+  if(!metrics){
+    const last = (d.experiments||[]).slice().reverse().find(x => x.evaluation && x.evaluation.t1);
+    if(last){
+      metrics = {...(last.evaluation.t1||{}), ...(last.evaluation.t2||{})};
+      composite = last.evaluation.composite;
+    }
+  }
+  const panel = document.getElementById("composite-panel");
+  if(!metrics){ panel.style.display = "none"; return; }
+  panel.style.display = "";
+  document.getElementById("composite-big").textContent = composite!=null ? composite.toFixed(3) : "—";
+  setHTML(document.getElementById("t1-rows"),
+    T1_SPECS.map(s => metricRow(s, metrics[s[0]])).join(""));
+  setHTML(document.getElementById("t2-rows"),
+    T2_SPECS.map(s => metricRow(s, metrics[s[0]])).join(""));
+}
+
 function renderCards(d){
   const s = d.summary||{};
+  const compPct = (s.experiments_with_eval!=null && s.count) ? `${s.experiments_with_eval}/${s.count}` : "—";
   const cards = [
-    ["експериментів", s.count ?? "—", ""],
-    ["найкращий eval", s.best_eval!=null ? s.best_eval.toFixed(4) : "—", "gold"],
-    ["найкраща якість", s.best_quality!=null ? s.best_quality+"/100" : "—", "green"],
-    ["GPU-час", fmtDur(s.gpu_sec), ""],
-    ["GPU $ (оцінка)", s.gpu_cost!=null ? "$"+s.gpu_cost.toFixed(2) : "—", ""],
-    ["середній/експ", fmtDur(s.avg_sec), ""],
+    ["експериментів",       s.count ?? "—", "", ""],
+    ["найкращий eval",      s.best_eval!=null ? s.best_eval.toFixed(4) : "—", "gold", s.best_commit ? esc(s.best_commit) : ""],
+    ["найкращий composite", s.best_composite!=null ? s.best_composite.toFixed(3) : "—", "purple", s.best_composite_commit ? esc(s.best_composite_commit) : ""],
+    ["композитна якість",   s.best_quality!=null ? s.best_quality+"/100" : "—", "green", `evaluate: ${compPct}`],
+    ["GPU-час",             fmtDur(s.gpu_sec), "", ""],
+    ["GPU $ (оцінка)",      s.gpu_cost!=null ? "$"+s.gpu_cost.toFixed(2) : "—", "", `avg ${fmtDur(s.avg_sec)}`],
   ];
-  setHTML(document.getElementById("cards"), cards.map(([k,v,c])=>
-    `<div class="card"><div class="k">${esc(k)}</div><div class="v ${esc(c)}">${esc(v)}</div></div>`).join(""));
+  setHTML(document.getElementById("cards"), cards.map(([k,v,c,sub])=>
+    `<div class="card"><div class="k">${esc(k)}</div><div class="v ${esc(c)}">${esc(v)}</div>${sub?`<div class="sub2">${sub}</div>`:""}</div>`).join(""));
 }
 
 function renderRun(d){
@@ -137,19 +244,38 @@ function renderTable(d){
   const qCol = q => { if(!q) return "—"; const s=q.score;
     const col = s>=70?"var(--green)":s>=45?"var(--gold)":"var(--red)";
     return `<span style="color:${col}" title="орфо ${q.orth} · повтор ${q.rep} · латин ${q.contam}">${s}</span>`; };
+  const compCol = ev => {
+    if(!ev || ev.composite == null) return "—";
+    const v = ev.composite;
+    const col = v>=0.7?"var(--green)":v>=0.5?"var(--purple)":v>=0.35?"var(--gold)":"var(--red)";
+    const tip = [];
+    if(ev.t2){
+      for(const k of ["style","rhythm","lexicon","grammar"]) if(ev.t2[k]!=null) tip.push(`${k} ${ev.t2[k]}`);
+    }
+    if(ev.t1){
+      if(ev.t1.ngram_novelty!=null) tip.push(`nov ${ev.t1.ngram_novelty.toFixed(2)}`);
+      if(ev.t1.distinct_2!=null) tip.push(`d2 ${ev.t1.distinct_2.toFixed(2)}`);
+    }
+    return `<span style="color:${col}" title="${esc(tip.join(' · '))}">${v.toFixed(3)}</span>`;
+  };
   const rows = xs.map(x=>{
     const ev = x.crashed ? '<span class="crash">CRASH</span>' : (x.eval_loss!=null?esc(x.eval_loss.toFixed(4)):"—");
     const tr = x.train_loss!=null?esc(x.train_loss.toFixed(3)):"—";
     const gap = x.gap!=null?esc(x.gap.toFixed(3)):"—";
-    return `<tr class="${x.best?'best':''}" title="${esc(cfgStr(x.config))}">
+    const cls = [x.best?"best":"", x.best_comp?"best-comp":""].filter(Boolean).join(" ");
+    let tags = "";
+    if(x.best) tags += '<span class="tag loss">LOSS</span>';
+    if(x.best_comp) tags += '<span class="tag comp">COMP</span>';
+    return `<tr class="${cls}" title="${esc(cfgStr(x.config))}">
       <td class="num">${esc(x.idx)}</td>
       <td class="mono">${esc(localTime(x.ts))}</td>
       <td class="mono">${esc(x.commit)}</td>
       <td class="num">${esc(x.rank??"—")}</td>
-      <td class="num mono">${ev}${x.best?'<span class="tag">BEST</span>':''}</td>
+      <td class="num mono">${ev}${tags}</td>
       <td class="num mono">${tr}</td>
       <td class="num mono">${gap}</td>
       <td class="num mono">${qCol(x.quality)}</td>
+      <td class="num mono">${compCol(x.evaluation)}</td>
       <td class="num mono">${esc(x.vram_gb??"—")}</td>
       <td class="num mono">${fmtDur(x.total_sec)}</td>
       <td class="desc">${esc(x.desc)}</td></tr>`;
@@ -157,16 +283,23 @@ function renderTable(d){
   setHTML(document.getElementById("tablewrap"),
     `<table><thead><tr><th>#</th><th>старт</th><th>commit</th><th>rank</th>
      <th class="num">eval_loss</th><th class="num">train</th><th class="num" title="eval − train; більше = перенавчання">розрив</th>
-     <th class="num" title="style score 0-100 з віршів">якість</th><th class="num">VRAM</th><th class="num">час</th><th>опис</th></tr></thead>
+     <th class="num" title="style score 0-100 з віршів">якість</th>
+     <th class="num" title="composite_score з evaluate.py (Tier 1+2)">composite</th>
+     <th class="num">VRAM</th><th class="num">час</th><th>опис</th></tr></thead>
      <tbody>${rows}</tbody></table>
-     <div style="padding:8px 14px;color:var(--dim);font-size:11px">наведи на рядок — побачиш повний конфіг · «якість» = орфографія+зв'язність із віршів</div>`);
+     <div style="padding:8px 14px;color:var(--dim);font-size:11px">
+       наведи на рядок — повний конфіг · наведи на composite — повна рубрика ·
+       <span style="color:var(--gold)">●</span> кращий eval_loss ·
+       <span style="color:var(--purple)">●</span> кращий composite
+     </div>`);
 }
 
 function renderChart(d){
   const xs = (d.experiments||[]).filter(x=>!x.crashed && x.eval_loss!=null);
   const labels = xs.map(x=>x.commit);
-  const data = xs.map(x=>x.eval_loss);
+  const data  = xs.map(x=>x.eval_loss);
   const qdata = xs.map(x=>x.quality?x.quality.score:null);
+  const cdata = xs.map(x=>x.evaluation && x.evaluation.composite!=null ? x.evaluation.composite : null);
   const ctx = document.getElementById("chart");
   if(!chart){
     chart = new Chart(ctx,{type:"line",
@@ -175,22 +308,34 @@ function renderChart(d){
          backgroundColor:"rgba(217,178,95,.12)",fill:true,tension:.3,pointRadius:4,pointBackgroundColor:"#d9b25f"},
         {label:"якість (0-100)",data:qdata,yAxisID:"y2",borderColor:"#5fd99a",
          backgroundColor:"transparent",tension:.3,pointRadius:3,pointBackgroundColor:"#5fd99a",borderDash:[4,3]},
+        {label:"composite (0-1)",data:cdata,yAxisID:"y3",borderColor:"#a78bfa",
+         backgroundColor:"transparent",tension:.3,pointRadius:3,pointBackgroundColor:"#a78bfa",borderDash:[2,4],spanGaps:true},
       ]},
       options:{plugins:{legend:{display:true,labels:{color:"#8b8f99",font:{size:10},boxWidth:14}}},
         scales:{x:{grid:{color:"#262a33"},ticks:{color:"#8b8f99",font:{size:10}}},
                 y:{position:"left",grid:{color:"#262a33"},ticks:{color:"#d9b25f"},title:{display:true,text:"eval_loss",color:"#d9b25f",font:{size:10}}},
-                y2:{position:"right",min:0,max:100,grid:{drawOnChartArea:false},ticks:{color:"#5fd99a"},title:{display:true,text:"якість",color:"#5fd99a",font:{size:10}}}}}});
+                y2:{position:"right",min:0,max:100,grid:{drawOnChartArea:false},ticks:{color:"#5fd99a"},title:{display:true,text:"якість",color:"#5fd99a",font:{size:10}}},
+                y3:{position:"right",min:0,max:1,grid:{drawOnChartArea:false},ticks:{color:"#a78bfa"},offset:true,
+                    title:{display:true,text:"composite",color:"#a78bfa",font:{size:10}}}}}});
   } else {
-    chart.data.labels=labels; chart.data.datasets[0].data=data; chart.data.datasets[1].data=qdata; chart.update("none");
+    chart.data.labels=labels;
+    chart.data.datasets[0].data=data;
+    chart.data.datasets[1].data=qdata;
+    chart.data.datasets[2].data=cdata;
+    chart.update("none");
   }
 }
 
-const PROBES = ["Шевченко (Днѣпръ)", "псевдо-Січ", "дрони-анахронізм"];
+const PROBES = ["Шевченко (Днѣпръ)", "псевдо-Січ", "дрони-анахронізм", "чорна хмара", "за катів"];
 function renderSamples(d){
   const s = d.samples||[]; const el=document.getElementById("samples");
   const q = d.samples_quality;
   const hdr = document.getElementById("samples-q");
-  if(hdr) hdr.textContent = q ? `style score ${q.score}/100  (орфо ${q.orth} · повтор ${q.rep} · латин ${q.contam})` : "";
+  let label = "";
+  if(q) label = `style score ${q.score}/100  (орфо ${q.orth} · повтор ${q.rep} · латин ${q.contam})`;
+  const live = d.live_evaluation;
+  if(live && live.composite_score!=null) label += (label?" · ":"") + `composite ${live.composite_score.toFixed(3)}`;
+  if(hdr) hdr.textContent = label;
   if(!s.length){ setHTML(el,'<div class="empty">—</div>'); return; }
   setHTML(el, s.map((t,i)=>`<div class="sample"><div class="lbl">${esc(PROBES[i]||("probe "+(i+1)))}</div><pre>${esc(t)}</pre></div>`).join(""));
 }
@@ -205,8 +350,17 @@ function renderAge(d){
 async function tick(){
   try{
     const d = await (await fetch("/api/data",{cache:"no-store"})).json();
-    renderAge(d); renderCards(d); renderRun(d); renderChart(d); renderTable(d); renderSamples(d);
-  }catch(e){ document.getElementById("age").textContent="сервер недоступний"; document.getElementById("dot").className="dot stale"; }
+    renderAge(d);
+    renderCards(d);
+    renderRun(d);
+    renderComposite(d);
+    renderChart(d);
+    renderTable(d);
+    renderSamples(d);
+  }catch(e){
+    document.getElementById("age").textContent="сервер недоступний";
+    document.getElementById("dot").className="dot stale";
+  }
 }
 tick(); setInterval(tick, 4000);
 </script>
