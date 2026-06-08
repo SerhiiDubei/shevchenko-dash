@@ -156,31 +156,44 @@ let chart;
 
 // ---------- Tier-1/Tier-2 metric specs ----------
 // Each: [key, label, min, max, color]. Bar fills from min..max.
+// [key, label, min, max, color, help (tooltip)]
 const T1_SPECS = [
-  ["distinct_1",            "distinct-1",      0, 1,    "#5fd99a"],
-  ["distinct_2",            "distinct-2",      0, 1,    "#5fd99a"],
-  ["ngram_novelty",         "n-gram novelty",  0, 1,    "#6ea8ff"],
-  ["old_orthography_rate",  "старий правопис", 0, 0.06, "#d9b25f"],
-  ["lexicon_density",       "Шевч.-лексика",   0, 0.08, "#d9b25f"],
-  ["avg_syllables_per_line","склад/рядок",     6, 18,   "#a78bfa"],
-  ["train_eval_gap",        "train→eval gap",  0, 2.0,  "#e8736b"],
+  ["distinct_1",            "словник",          0, 1,    "#5fd99a",
+   "Унікальних слів від усіх слів у віршах. Низько — модель повторює одне й те ж."],
+  ["distinct_2",            "без повторів",     0, 1,    "#5fd99a",
+   "Який % пар слів зустрічається лише один раз. ≥0.75 — модель не повторюється сама."],
+  ["ngram_novelty",         "новизна тексту",   0, 1,    "#6ea8ff",
+   "% 8-символьних послідовностей, яких НЕ було у тренуванні. Anti-memorization: 0.7+ — добре, <0.4 — модель копіює корпус."],
+  ["old_orthography_rate",  "старий правопис",  0, 0.06, "#d9b25f",
+   "Густота символів ѣ ъ ѵ — характерних для XIX століття. 3-5% — автентично."],
+  ["lexicon_density",       "Шевч.-лексика",    0, 0.08, "#d9b25f",
+   "% слів зі словника шевченківських маркерів (Богъ, кобзар, неволя, могила, дума...)."],
+  ["avg_syllables_per_line","складів у рядку",  6, 18,   "#a78bfa",
+   "Народна метрика Шевченка — близько 14 складів. Менше 10 — обриває думку, понад 16 — задовге."],
+  ["train_eval_gap",        "перенавчання",     0, 2.0,  "#e8736b",
+   "Розрив eval_loss − train_loss. Велике число (>1) = модель добре пам'ятає train, але не узагальнює."],
 ];
 const T2_SPECS = [
-  ["style",   "стиль",     1, 10, "#d9b25f"],
-  ["rhythm",  "ритм",      1, 10, "#a78bfa"],
-  ["lexicon", "лексика",   1, 10, "#d9b25f"],
-  ["grammar", "граматика", 1, 10, "#6ea8ff"],
+  ["style",   "стиль",     1, 10, "#d9b25f",
+   "Чи звучить як Шевченко загалом — голос, інтонація, образи."],
+  ["rhythm",  "ритм",      1, 10, "#a78bfa",
+   "Поетичний потік: 14-складовик, рими, природні зачини."],
+  ["lexicon", "лексика",   1, 10, "#d9b25f",
+   "Слова характерно шевченківські vs модерн / російські вкраплення."],
+  ["grammar", "граматика", 1, 10, "#6ea8ff",
+   "Зв'язні речення, без галюцинацій вигаданих слів."],
 ];
 
 function metricRow(spec, value){
-  const [key, label, min, max, color] = spec;
+  const [key, label, min, max, color, help] = spec;
+  const tip = help ? `${help}  ·  ${key} ∈ [${min}..${max}]` : `${key} ∈ [${min}..${max}]`;
   if(value == null) {
-    return `<div class="metric-row"><span class="name">${esc(label)}</span>
+    return `<div class="metric-row" title="${esc(tip)}"><span class="name">${esc(label)}</span>
       <div class="bar"></div><span class="v">—</span></div>`;
   }
   const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
   const valFmt = (max <= 1) ? value.toFixed(3) : (max <= 10 ? value.toFixed(1) : value.toFixed(2));
-  return `<div class="metric-row" title="${esc(key)} ∈ [${min}..${max}]">
+  return `<div class="metric-row" title="${esc(tip)}">
     <span class="name">${esc(label)}</span>
     <div class="bar"><i style="width:${pct.toFixed(1)}%;background:${color}"></i></div>
     <span class="v">${esc(valFmt)}</span></div>`;
