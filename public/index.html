@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shevchenko-FT · live</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0d10; --panel:#15171c; --panel2:#1b1e25; --line:#262a33;
+    --ink:#e8e6e0; --dim:#8b8f99; --gold:#d9b25f; --green:#5fd99a; --red:#e8736b;
+    --blue:#6ea8ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',-apple-system,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+  header{padding:22px 26px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  h1{font-size:19px;margin:0;letter-spacing:.3px}
+  h1 .ac{color:var(--gold)}
+  .sub{color:var(--dim);font-size:13px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.stale{background:var(--red);box-shadow:0 0 8px var(--red)}
+  .dot.live{animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  main{padding:22px 26px;max-width:1180px;margin:0 auto;display:grid;gap:20px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .card .v{font-size:24px;margin-top:6px;font-weight:600}
+  .card .v.gold{color:var(--gold)} .card .v.green{color:var(--green)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .panel h2{font-size:13px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);
+    color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+  .runbar{display:flex;align-items:center;gap:14px;padding:16px;flex-wrap:wrap}
+  .pill{font-size:12px;padding:4px 11px;border-radius:999px;font-weight:600}
+  .pill.on{background:rgba(95,217,154,.15);color:var(--green)}
+  .pill.off{background:rgba(139,143,153,.15);color:var(--dim)}
+  .prog{flex:1;height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;min-width:120px}
+  .prog>i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--green));width:0;transition:width .5s}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 14px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  td.num{text-align:right}
+  tr.best td{background:rgba(217,178,95,.07)}
+  .tag{font-size:10px;color:var(--gold);border:1px solid var(--gold);border-radius:5px;padding:1px 5px;margin-left:6px}
+  .crash{color:var(--red)}
+  .desc{color:var(--dim);white-space:normal;max-width:340px}
+  canvas{padding:14px}
+  .samples{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0}
+  .sample{padding:16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .sample pre{white-space:pre-wrap;font-size:12.5px;line-height:1.6;margin:0;color:var(--ink);font-family:Georgia,serif}
+  .sample .lbl{color:var(--gold);font-size:11px;margin-bottom:8px}
+  footer{color:var(--dim);font-size:11px;text-align:center;padding:18px}
+  .empty{padding:30px;color:var(--dim);text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Реве та стогне <span class="ac">Qwen</span> — Shevchenko-FT</h1>
+  <span class="sub">автономний LoRA-ресерч · live</span>
+  <div class="live"><span id="dot" class="dot"></span><span id="age">з'єднання…</span></div>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <h2>Зараз у роботі</h2>
+    <div class="runbar" id="runbar"><span class="pill off">—</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>eval_loss у часі (нижче = краще)</h2>
+    <canvas id="chart" height="120"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Експерименти</h2>
+    <div id="tablewrap"><div class="empty">очікую дані з пода…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Probe-семпли (останній прогон)</h2>
+    <div class="samples" id="samples"><div class="empty">—</div></div>
+  </div>
+</main>
+<footer>оновлюється кожні 4с · дані пушить под кожні 10с</footer>
+
+<script>
+// All dynamic strings are escaped via esc(); every innerHTML write also passes
+// through DOMPurify.sanitize() as defence-in-depth against the pod's free-text
+// fields (commit messages, generated poems).
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const setHTML = (el, html) => { el.innerHTML = DOMPurify.sanitize(html); };
+const fmtDur = s => s==null ? "—" : `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}`;
+let chart;
+
+function renderCards(d){
+  const s = d.summary||{};
+  const cards = [
+    ["експериментів", s.count ?? "—", ""],
+    ["найкращий eval", s.best_eval!=null ? s.best_eval.toFixed(4) : "—", "gold"],
+    ["GPU-час", fmtDur(s.gpu_sec), ""],
+    ["пайплайн-час", fmtDur(s.pipeline_sec), ""],
+    ["середній/експ", fmtDur(s.avg_sec), ""],
+  ];
+  setHTML(document.getElementById("cards"), cards.map(([k,v,c])=>
+    `<div class="card"><div class="k">${esc(k)}</div><div class="v ${esc(c)}">${esc(v)}</div></div>`).join(""));
+}
+
+function renderRun(d){
+  const r = d.running||{}; const el = document.getElementById("runbar");
+  if(r.active){
+    const pct = r.total_steps ? Math.round(100*r.step/r.total_steps) : 0;
+    setHTML(el, `<span class="pill on">● працює</span>
+      <span class="mono">${esc(r.commit)}</span>
+      <span class="desc">${esc(r.desc)}</span>
+      <div class="prog"><i style="width:${pct}%"></i></div>
+      <span class="mono">${esc(r.step||0)}/${esc(r.total_steps||"?")} · ${fmtDur(r.elapsed_sec)}</span>`);
+  } else {
+    setHTML(el, `<span class="pill off">○ простій</span><span class="sub">між експериментами / агент думає</span>`);
+  }
+}
+
+function renderTable(d){
+  const xs = d.experiments||[];
+  if(!xs.length){ setHTML(document.getElementById("tablewrap"),'<div class="empty">ще немає експериментів</div>'); return; }
+  const rows = xs.map(x=>{
+    const ev = x.crashed ? '<span class="crash">CRASH</span>' : (x.eval_loss!=null?esc(x.eval_loss.toFixed(4)):"—");
+    return `<tr class="${x.best?'best':''}">
+      <td class="num">${esc(x.idx)}</td>
+      <td class="mono">${esc(x.start)}</td>
+      <td class="mono">${esc(x.commit)}</td>
+      <td class="num">${esc(x.rank??"—")}</td>
+      <td class="num mono">${ev}${x.best?'<span class="tag">BEST</span>':''}</td>
+      <td class="num mono">${fmtDur(x.train_sec)}</td>
+      <td class="num mono">${fmtDur(x.total_sec)}</td>
+      <td class="desc">${esc(x.desc)}</td></tr>`;
+  }).join("");
+  setHTML(document.getElementById("tablewrap"),
+    `<table><thead><tr><th>#</th><th>старт</th><th>commit</th><th>rank</th>
+     <th class="num">eval_loss</th><th class="num">train</th><th class="num">total</th><th>опис</th></tr></thead>
+     <tbody>${rows}</tbody></table>`);
+}
+
+function renderChart(d){
+  const xs = (d.experiments||[]).filter(x=>!x.crashed && x.eval_loss!=null);
+  const labels = xs.map(x=>x.commit);
+  const data = xs.map(x=>x.eval_loss);
+  const ctx = document.getElementById("chart");
+  if(!chart){
+    chart = new Chart(ctx,{type:"line",
+      data:{labels,datasets:[{data,borderColor:"#d9b25f",backgroundColor:"rgba(217,178,95,.12)",
+        fill:true,tension:.3,pointRadius:4,pointBackgroundColor:"#d9b25f"}]},
+      options:{plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:"#262a33"},ticks:{color:"#8b8f99",font:{size:10}}},
+                y:{grid:{color:"#262a33"},ticks:{color:"#8b8f99"}}}}});
+  } else { chart.data.labels=labels; chart.data.datasets[0].data=data; chart.update("none"); }
+}
+
+function renderSamples(d){
+  const s = d.samples||[]; const el=document.getElementById("samples");
+  if(!s.length){ setHTML(el,'<div class="empty">—</div>'); return; }
+  setHTML(el, s.map((t,i)=>`<div class="sample"><div class="lbl">probe ${i+1}</div><pre>${esc(t)}</pre></div>`).join(""));
+}
+
+function renderAge(d){
+  const dot=document.getElementById("dot"), age=document.getElementById("age");
+  if(d._ageSeconds==null){ age.textContent="немає даних"; dot.className="dot stale"; return; }
+  age.textContent = `оновлено ${d._ageSeconds}с тому`;
+  dot.className = "dot " + (d._stale ? "stale" : "live");
+}
+
+async function tick(){
+  try{
+    const d = await (await fetch("/api/data",{cache:"no-store"})).json();
+    renderAge(d); renderCards(d); renderRun(d); renderChart(d); renderTable(d); renderSamples(d);
+  }catch(e){ document.getElementById("age").textContent="сервер недоступний"; document.getElementById("dot").className="dot stale"; }
+}
+tick(); setInterval(tick, 4000);
+</script>
+</body>
+</html>

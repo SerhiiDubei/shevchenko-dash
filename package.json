@@ -1,0 +1,12 @@
+{
+  "name": "shevchenko-dash",
+  "version": "1.0.0",
+  "description": "Real-time dashboard for the Shevchenko autoresearch pipeline",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
