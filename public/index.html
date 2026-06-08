@@ -77,6 +77,23 @@
   .composite-hero .big{font-size:48px;font-weight:700;color:var(--purple);font-family:'SF Mono',ui-monospace,monospace;letter-spacing:-1px}
   .composite-hero .lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
   .composite-hero .desc{color:var(--dim);font-size:12.5px;margin-top:4px;max-width:50ch}
+  /* judge panel: 3 models side-by-side */
+  .judge-panel{padding:14px 18px;border-top:1px solid var(--line)}
+  .judge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:10px}
+  .judge-card{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .judge-card .model{font-family:'SF Mono',ui-monospace,monospace;font-size:11px;color:var(--blue);margin-bottom:6px}
+  .judge-card .scores{display:flex;gap:14px;font-family:'SF Mono',ui-monospace,monospace;font-size:13px;flex-wrap:wrap}
+  .judge-card .scores span{color:var(--ink)}
+  .judge-card .scores span b{color:var(--gold);font-weight:600;margin-left:4px}
+  .judge-card .cmt{color:var(--dim);font-size:11.5px;margin-top:8px;line-height:1.4;font-style:italic}
+  .judge-meta{display:flex;gap:18px;font-size:11px;color:var(--dim);margin-top:10px}
+  .judge-meta b{color:var(--ink);font-family:'SF Mono',ui-monospace,monospace;font-weight:500}
+  /* themes cloud */
+  .themes-block{padding:14px 18px;border-top:1px solid var(--line)}
+  .themes-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .theme-chip{font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(217,178,95,.12);color:var(--gold);border:1px solid rgba(217,178,95,.3)}
+  .theme-chip.dominant{background:rgba(217,178,95,.25);font-weight:600}
+  .themes-note{color:var(--dim);font-size:11.5px;margin-top:8px;font-style:italic}
   footer{color:var(--dim);font-size:11px;text-align:center;padding:18px}
   .empty{padding:30px;color:var(--dim);text-align:center}
 </style>
@@ -113,9 +130,23 @@
         <div id="t1-rows"><div class="empty" style="padding:8px 0">очікую evaluate.py…</div></div>
       </div>
       <div class="metric-block" id="t2-block">
-        <h3>Tier 2 — LLM judge (DeepSeek)</h3>
+        <h3>Tier 2 — Думка комісії (середнє)</h3>
         <div id="t2-rows"><div class="empty" style="padding:8px 0">очікую LLM-judge…</div></div>
       </div>
+    </div>
+    <div class="judge-panel" id="judge-panel" style="display:none">
+      <h3 style="font-size:11px;margin:0 0 6px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600">
+        Багатомодельне голосування <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;margin-left:8px">3 незалежні судді через OpenRouter</span>
+      </h3>
+      <div class="judge-grid" id="judge-grid"></div>
+      <div class="judge-meta" id="judge-meta"></div>
+    </div>
+    <div class="themes-block" id="themes-block" style="display:none">
+      <h3 style="font-size:11px;margin:0 0 6px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600">
+        Теми у згенерованому <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;margin-left:8px">більше тем = модель не зациклена на одній</span>
+      </h3>
+      <div class="themes-row" id="themes-row"></div>
+      <div class="themes-note" id="themes-note"></div>
     </div>
   </div>
 
@@ -204,13 +235,26 @@ function renderComposite(d){
   const live = d.live_evaluation;
   let metrics = live ? live.metrics : null;
   let composite = live ? live.composite_score : null;
+  let panelData = null;
+  let conceptData = null;
   if(!metrics){
     const last = (d.experiments||[]).slice().reverse().find(x => x.evaluation && x.evaluation.t1);
     if(last){
-      metrics = {...(last.evaluation.t1||{}), ...(last.evaluation.t2||{})};
+      metrics = {...(last.evaluation.t1||{}), ...(last.evaluation.t2||{}),
+                 ...(last.evaluation.judge_meta||{}), ...(last.evaluation.concepts||{})};
       composite = last.evaluation.composite;
+      panelData = last.evaluation.judge_panel;
+      conceptData = last.evaluation.concepts;
+    }
+  } else {
+    // live_evaluation has flat metrics; also grab panel/concepts from the most-recent archive
+    const last = (d.experiments||[]).slice().reverse().find(x => x.evaluation);
+    if(last){
+      panelData = last.evaluation.judge_panel;
+      conceptData = last.evaluation.concepts;
     }
   }
+
   const panel = document.getElementById("composite-panel");
   if(!metrics){ panel.style.display = "none"; return; }
   panel.style.display = "";
@@ -219,6 +263,55 @@ function renderComposite(d){
     T1_SPECS.map(s => metricRow(s, metrics[s[0]])).join(""));
   setHTML(document.getElementById("t2-rows"),
     T2_SPECS.map(s => metricRow(s, metrics[s[0]])).join(""));
+
+  // ----- Judge panel: 3 model cards side-by-side -----
+  const judgePanel = document.getElementById("judge-panel");
+  if(panelData && panelData.length){
+    judgePanel.style.display = "";
+    const shortModel = m => (m||"").split("/").slice(-1)[0].replace(/-instruct.*$/,"").slice(0,28);
+    setHTML(document.getElementById("judge-grid"),
+      panelData.map(v => `
+        <div class="judge-card">
+          <div class="model">${esc(shortModel(v.model))}</div>
+          <div class="scores">
+            <span>стиль<b>${esc(v.style ?? "—")}</b></span>
+            <span>ритм<b>${esc(v.rhythm ?? "—")}</b></span>
+            <span>лекс<b>${esc(v.lexicon ?? "—")}</b></span>
+            <span>грам<b>${esc(v.grammar ?? "—")}</b></span>
+          </div>
+          ${v.comment ? `<div class="cmt">${esc(v.comment)}</div>` : ""}
+        </div>`).join(""));
+    const variance = metrics.judge_variance_max;
+    const consensus = metrics.judge_consensus_size;
+    const tried = metrics.judge_models_tried;
+    const varColor = variance == null ? "var(--dim)"
+                    : variance < 1 ? "var(--green)"
+                    : variance < 3 ? "var(--gold)" : "var(--red)";
+    setHTML(document.getElementById("judge-meta"),
+      `<span>консенсус: <b>${esc(consensus ?? "—")}/${esc(tried ?? "—")}</b> моделей відповіли</span>
+       <span title="дисперсія найгіршого аспекту між суддями">
+         розкид думок: <b style="color:${varColor}">${variance != null ? variance.toFixed(2) : "—"}</b>
+         (${variance == null ? "—" : variance < 1 ? "узгоджені" : variance < 3 ? "помірний" : "великий"})
+       </span>`);
+  } else {
+    judgePanel.style.display = "none";
+  }
+
+  // ----- Themes cloud -----
+  const themesBlock = document.getElementById("themes-block");
+  const themes = conceptData?.themes_found || metrics.themes_found;
+  if(themes && themes.length){
+    themesBlock.style.display = "";
+    const dom = conceptData?.dominant_theme || metrics.dominant_theme || "";
+    const note = conceptData?.concept_note || metrics.concept_note || "";
+    setHTML(document.getElementById("themes-row"),
+      themes.map(t => `<span class="theme-chip ${t===dom?'dominant':''}">${esc(t)}</span>`).join(""));
+    document.getElementById("themes-note").textContent =
+      note ? `${themes.length} тем · домінантна: ${dom || "—"} · ${note}` :
+             `${themes.length} тем · домінантна: ${dom || "—"}`;
+  } else {
+    themesBlock.style.display = "none";
+  }
 }
 
 function renderCards(d){
