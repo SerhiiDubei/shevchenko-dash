@@ -98,6 +98,8 @@ const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const setHTML = (el, html) => { el.innerHTML = DOMPurify.sanitize(html); };
 const fmtDur = s => s==null ? "—" : `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}`;
+// render any ISO timestamp in the VIEWER's local timezone (Kyiv etc.)
+const localTime = iso => { try { return new Date(iso).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}); } catch(e){ return ""; } };
 let chart;
 
 function renderCards(d){
@@ -134,7 +136,7 @@ function renderTable(d){
     const ev = x.crashed ? '<span class="crash">CRASH</span>' : (x.eval_loss!=null?esc(x.eval_loss.toFixed(4)):"—");
     return `<tr class="${x.best?'best':''}">
       <td class="num">${esc(x.idx)}</td>
-      <td class="mono">${esc(x.start)}</td>
+      <td class="mono">${esc(localTime(x.ts))}</td>
       <td class="mono">${esc(x.commit)}</td>
       <td class="num">${esc(x.rank??"—")}</td>
       <td class="num mono">${ev}${x.best?'<span class="tag">BEST</span>':''}</td>
@@ -172,7 +174,7 @@ function renderSamples(d){
 function renderAge(d){
   const dot=document.getElementById("dot"), age=document.getElementById("age");
   if(d._ageSeconds==null){ age.textContent="немає даних"; dot.className="dot stale"; return; }
-  age.textContent = `оновлено ${d._ageSeconds}с тому`;
+  age.textContent = `оновлено ${d._ageSeconds}с тому${d.updated ? " · "+localTime(d.updated) : ""}`;
   dot.className = "dot " + (d._stale ? "stale" : "live");
 }
 
