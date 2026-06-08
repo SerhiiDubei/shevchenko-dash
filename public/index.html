@@ -84,7 +84,7 @@
   </div>
 
   <div class="panel">
-    <h2>Probe-семпли (останній прогон)</h2>
+    <h2>Probe-семпли (останній прогон) · <span id="samples-q" style="color:var(--green);text-transform:none;letter-spacing:0"></span></h2>
     <div class="samples" id="samples"><div class="empty">—</div></div>
   </div>
 </main>
@@ -107,8 +107,9 @@ function renderCards(d){
   const cards = [
     ["експериментів", s.count ?? "—", ""],
     ["найкращий eval", s.best_eval!=null ? s.best_eval.toFixed(4) : "—", "gold"],
+    ["найкраща якість", s.best_quality!=null ? s.best_quality+"/100" : "—", "green"],
     ["GPU-час", fmtDur(s.gpu_sec), ""],
-    ["пайплайн-час", fmtDur(s.pipeline_sec), ""],
+    ["GPU $ (оцінка)", s.gpu_cost!=null ? "$"+s.gpu_cost.toFixed(2) : "—", ""],
     ["середній/експ", fmtDur(s.avg_sec), ""],
   ];
   setHTML(document.getElementById("cards"), cards.map(([k,v,c])=>
@@ -132,43 +133,66 @@ function renderRun(d){
 function renderTable(d){
   const xs = d.experiments||[];
   if(!xs.length){ setHTML(document.getElementById("tablewrap"),'<div class="empty">ще немає експериментів</div>'); return; }
+  const cfgStr = c => !c ? "" : Object.entries(c).map(([k,v])=>`${k}=${v}`).join("  ");
+  const qCol = q => { if(!q) return "—"; const s=q.score;
+    const col = s>=70?"var(--green)":s>=45?"var(--gold)":"var(--red)";
+    return `<span style="color:${col}" title="орфо ${q.orth} · повтор ${q.rep} · латин ${q.contam}">${s}</span>`; };
   const rows = xs.map(x=>{
     const ev = x.crashed ? '<span class="crash">CRASH</span>' : (x.eval_loss!=null?esc(x.eval_loss.toFixed(4)):"—");
-    return `<tr class="${x.best?'best':''}">
+    const tr = x.train_loss!=null?esc(x.train_loss.toFixed(3)):"—";
+    const gap = x.gap!=null?esc(x.gap.toFixed(3)):"—";
+    return `<tr class="${x.best?'best':''}" title="${esc(cfgStr(x.config))}">
       <td class="num">${esc(x.idx)}</td>
       <td class="mono">${esc(localTime(x.ts))}</td>
       <td class="mono">${esc(x.commit)}</td>
       <td class="num">${esc(x.rank??"—")}</td>
       <td class="num mono">${ev}${x.best?'<span class="tag">BEST</span>':''}</td>
-      <td class="num mono">${fmtDur(x.train_sec)}</td>
+      <td class="num mono">${tr}</td>
+      <td class="num mono">${gap}</td>
+      <td class="num mono">${qCol(x.quality)}</td>
+      <td class="num mono">${esc(x.vram_gb??"—")}</td>
       <td class="num mono">${fmtDur(x.total_sec)}</td>
       <td class="desc">${esc(x.desc)}</td></tr>`;
   }).join("");
   setHTML(document.getElementById("tablewrap"),
     `<table><thead><tr><th>#</th><th>старт</th><th>commit</th><th>rank</th>
-     <th class="num">eval_loss</th><th class="num">train</th><th class="num">total</th><th>опис</th></tr></thead>
-     <tbody>${rows}</tbody></table>`);
+     <th class="num">eval_loss</th><th class="num">train</th><th class="num" title="eval − train; більше = перенавчання">розрив</th>
+     <th class="num" title="style score 0-100 з віршів">якість</th><th class="num">VRAM</th><th class="num">час</th><th>опис</th></tr></thead>
+     <tbody>${rows}</tbody></table>
+     <div style="padding:8px 14px;color:var(--dim);font-size:11px">наведи на рядок — побачиш повний конфіг · «якість» = орфографія+зв'язність із віршів</div>`);
 }
 
 function renderChart(d){
   const xs = (d.experiments||[]).filter(x=>!x.crashed && x.eval_loss!=null);
   const labels = xs.map(x=>x.commit);
   const data = xs.map(x=>x.eval_loss);
+  const qdata = xs.map(x=>x.quality?x.quality.score:null);
   const ctx = document.getElementById("chart");
   if(!chart){
     chart = new Chart(ctx,{type:"line",
-      data:{labels,datasets:[{data,borderColor:"#d9b25f",backgroundColor:"rgba(217,178,95,.12)",
-        fill:true,tension:.3,pointRadius:4,pointBackgroundColor:"#d9b25f"}]},
-      options:{plugins:{legend:{display:false}},
+      data:{labels,datasets:[
+        {label:"eval_loss",data,yAxisID:"y",borderColor:"#d9b25f",
+         backgroundColor:"rgba(217,178,95,.12)",fill:true,tension:.3,pointRadius:4,pointBackgroundColor:"#d9b25f"},
+        {label:"якість (0-100)",data:qdata,yAxisID:"y2",borderColor:"#5fd99a",
+         backgroundColor:"transparent",tension:.3,pointRadius:3,pointBackgroundColor:"#5fd99a",borderDash:[4,3]},
+      ]},
+      options:{plugins:{legend:{display:true,labels:{color:"#8b8f99",font:{size:10},boxWidth:14}}},
         scales:{x:{grid:{color:"#262a33"},ticks:{color:"#8b8f99",font:{size:10}}},
-                y:{grid:{color:"#262a33"},ticks:{color:"#8b8f99"}}}}});
-  } else { chart.data.labels=labels; chart.data.datasets[0].data=data; chart.update("none"); }
+                y:{position:"left",grid:{color:"#262a33"},ticks:{color:"#d9b25f"},title:{display:true,text:"eval_loss",color:"#d9b25f",font:{size:10}}},
+                y2:{position:"right",min:0,max:100,grid:{drawOnChartArea:false},ticks:{color:"#5fd99a"},title:{display:true,text:"якість",color:"#5fd99a",font:{size:10}}}}}});
+  } else {
+    chart.data.labels=labels; chart.data.datasets[0].data=data; chart.data.datasets[1].data=qdata; chart.update("none");
+  }
 }
 
+const PROBES = ["Шевченко (Днѣпръ)", "псевдо-Січ", "дрони-анахронізм"];
 function renderSamples(d){
   const s = d.samples||[]; const el=document.getElementById("samples");
+  const q = d.samples_quality;
+  const hdr = document.getElementById("samples-q");
+  if(hdr) hdr.textContent = q ? `style score ${q.score}/100  (орфо ${q.orth} · повтор ${q.rep} · латин ${q.contam})` : "";
   if(!s.length){ setHTML(el,'<div class="empty">—</div>'); return; }
-  setHTML(el, s.map((t,i)=>`<div class="sample"><div class="lbl">probe ${i+1}</div><pre>${esc(t)}</pre></div>`).join(""));
+  setHTML(el, s.map((t,i)=>`<div class="sample"><div class="lbl">${esc(PROBES[i]||("probe "+(i+1)))}</div><pre>${esc(t)}</pre></div>`).join(""));
 }
 
 function renderAge(d){
